@@ -2467,6 +2467,9 @@ bool Xdrv23(uint32_t function) {
         break;
       case FUNC_LOOP:
 #ifdef USE_ZIGBEE_EZSP
+#ifdef ZIGBEE_EZSP_RX_TASK
+        ZbRx.paused = (ZBU_IDLE != ZbUpload.ota_step);   // the EFR32 firmware uploader reads the serial port itself
+#endif // ZIGBEE_EZSP_RX_TASK
         if (ZigbeeUploadXmodem()) {
           return false;
         }

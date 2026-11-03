@@ -1,3 +1,114 @@
+# Tasmota GW — Projekte+ (fork do Tasmota)
+
+Firmware dos gateways Zigbee **Projekte+** (ESP32 + coordenador EFR32/EZSP), derivado do [Tasmota oficial](https://github.com/arendst/Tasmota).
+Esta branch traz a correção do erro **`ZbState Code 81` (ASH "ACK timeout")**, que derrubava o Zigbee quando a internet caía com o Wi-Fi ainda conectado.
+
+> O conteúdo original do README do Tasmota continua logo abaixo da seção Projekte+.
+
+## Rastreabilidade
+
+| Item | Valor |
+|---|---|
+| Código-base oficial | `arendst/Tasmota` commit [`1c2173927cdf1be61759bcc3b064b9511a18e5d7`](https://github.com/arendst/Tasmota/commit/1c2173927cdf1be61759bcc3b064b9511a18e5d7) — "Update RELEASENOTES.md", 16/10/2026 (versão 16.0.0 pré-lançamento) |
+| Branch desta correção | `projekte/zigbee-rx-task` |
+| Versão gerada | `16.0.0(Projekte+ GW v0.1)` |
+| Ambiente de compilação | `tasmota32-projekte-gw` ([projekte/platformio_override.ini](projekte/platformio_override.ini)), PlatformIO 6.2.0, Core 3.3.12 / IDF 5.5.5 |
+| Hardware validado | ESP32-D0WD-V3 (4 MB, layout safeboot) + EFR32 EZSP 6.7.10.0 protocolo 8 — gateway de teste `PXXX_GW02_TEST` |
+| Data da validação | 03/11/2026 — testes reais retirando o cabo do modem |
+| Relatório completo | [projekte/docs/RELATORIO_CORRECAO_CODE81_2026-11-03.md](projekte/docs/RELATORIO_CORRECAO_CODE81_2026-11-03.md) |
+| Patch isolado | [projekte/docs/patch_zigbee_rx_task.diff](projekte/docs/patch_zigbee_rx_task.diff) (aplicável com `git apply` em outras versões) |
+| Explicação ilustrada (PDF) | [projekte/docs/Correcao_Zigbee_Code81_ProjektePlus.pdf](projekte/docs/Correcao_Zigbee_Code81_ProjektePlus.pdf) |
+
+Para ver todas as diferenças em relação ao original:
+```bash
+git diff 1c2173927cdf1be61759bcc3b064b9511a18e5d7 -- tasmota/
+```
+
+## Comparação com o código original
+
+### Arquivos alterados
+
+| Arquivo | Original | Projekte+ |
+|---|---|---|
+| `tasmota/tasmota_xdrv_driver/xdrv_23_zigbee_9_serial.ino` | Leitura da serial Zigbee e envio de ACK **dentro do loop principal** | **Tarefa FreeRTOS `ZbRx`** lê a serial e envia o ACK; loop principal processa a fila (+237 / −25 linhas) |
+| `tasmota/tasmota_xdrv_driver/xdrv_23_zigbee_A_impl.ino` | — | Pausa a tarefa durante atualização do firmware da EFR32 (+3 linhas) |
+| `projekte/platformio_override.ini` (novo) | — | Ambiente enxuto `tasmota32-projekte-gw` (base Zigbee Bridge Pro, partição 2880k) |
+| `projekte/user_config_override.h` (novo) | — | Configuração Projekte+ **sem senhas** (marcadores `SUA_SENHA_*`) |
+| `projekte/tools/simulador_queda.py` (novo) | — | Gravador de log via rede local + simulador de queda de MQTT |
+
+Nenhum outro arquivo do Tasmota foi modificado.
+
+### Comportamento
+
+| Situação | Tasmota original | Tasmota GW Projekte+ |
+|---|---|---|
+| Internet cai, Wi-Fi conectado | MQTT/TLS tenta reconectar e **trava o loop principal 5–40 s** | Igual (o MQTT não foi alterado) |
+| Mensagem da EFR32 durante o travamento | Fica sem ACK; após as retransmissões a EFR32 envia ASH ERROR `0x51` | ACK enviado em ≤ 5 ms pela tarefa `ZbRx` |
+| Resultado | `{"ZbState":{"Status":99,"Message":"Failed state","Error":"ACK timeout","Code":81}}` + reinício | Zigbee continua; log `ZIG: Main loop was busy, N frames acknowledged by RX task, max wait X ms` |
+| Teste real (firmware antigo 14.5.0) | Travou 10 s → Code 81 em 0,3 s | — |
+| Teste real (este firmware) | — | Travou 22 s e 38 s → **0 ocorrências de Code 81** |
+
+### Trecho principal — antes e depois
+
+**Original** (`ZigbeeInputLoop`, loop principal): lê os bytes, monta o quadro e só então envia o ACK. Se o loop estiver travado, nada acontece.
+```cpp
+// xdrv_23_zigbee_8/9 (original) — chamado só pelo FUNC_LOOP
+while (ZigbeeSerial->available()) { ... monta quadro ... }
+...
+ZigbeeProcessInputRaw(ezsp_buffer);          // dentro dela:
+    EZSP_Serial.from_ack = ((control_byte >> 4) + 1) & 0x07;
+    ZigbeeEZSPSendRaw(&ack_byte, 1, false);  // ACK enviado SÓ quando o loop roda
+```
+
+**Projekte+**: uma tarefa de prioridade 5 (o loop principal tem prioridade 1) roda a cada 5 ms mesmo com o loop travado.
+```cpp
+void ZigbeeRxTask(void *) {
+  while (true) {
+    ZigbeeSerialLock();
+    while ((frame = ZigbeeEZSPReadFrame(true)) != nullptr) {
+      if (xQueueSend(ZbRx.queue, &item, 0) == pdTRUE) {
+        ZigbeeRxTaskAck(*frame);             // ACK imediato para a EFR32
+      } else { delete frame; ZbRx.dropped++; } // fila cheia: EFR32 retransmite
+    }
+    ZigbeeSerialUnlock();
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+}
+// Loop principal: 1 quadro por ciclo (a máquina de estados precisa ver cada resposta)
+if (xQueueReceive(ZbRx.queue, &item, 0) == pdTRUE) {
+  zigbee_frame_preacked = true;              // não repetir o ACK
+  ZigbeeEZSPProcessFrame(*item.frame);
+  ...
+}
+```
+
+### Parâmetros (podem ser alterados no `user_config_override.h`)
+
+| Define | Padrão | Função |
+|---|---|---|
+| `ZIGBEE_EZSP_NO_RX_TASK` | não definido | Se definido, volta exatamente ao comportamento original |
+| `ZIGBEE_RX_TASK_PRIORITY` | `5` | Prioridade FreeRTOS da tarefa (loop principal = 1) |
+| `ZIGBEE_RX_TASK_PERIOD_MS` | `5` | Intervalo de leitura da serial (buffer de 256 bytes ≈ 22 ms a 115200 bps) |
+
+## Como compilar e gravar
+
+```bash
+cp projekte/user_config_override.h tasmota/user_config_override.h   # e preencha as senhas
+cp projekte/platformio_override.ini .
+pio run -e tasmota32-projekte-gw     # gera build_output/firmware/tasmota32-projekte-gw.bin
+```
+Gravação no gateway (layout safeboot): console `Restart 3` → página **Atualizar Firmware** → enviar o `.bin`. Detalhes no relatório.
+
+> **Segurança:** o binário compilado contém as senhas definidas no `user_config_override.h`. Não publique o `.bin`.
+
+## Histórico Projekte+
+
+| Data | Versão | Alteração |
+|---|---|---|
+| 03/11/2026 | 16.0.0 Projekte+ GW v0.1 | Tarefa `ZbRx` (ACK imediato da serial EZSP); ambiente enxuto `tasmota32-projekte-gw`; ferramenta de log/simulação; relatório e PDF |
+
+---
+
 ![Tasmota logo](/tools/logo/TASMOTA_FullLogo_Vector.svg#gh-light-mode-only)![Tasmota logo](/tools/logo/TASMOTA_FullLogo_Vector_White.svg#gh-dark-mode-only)
 
 Alternative firmware for [ESP8266](https://en.wikipedia.org/wiki/ESP8266) and [ESP32](https://en.wikipedia.org/wiki/ESP32) based devices with **easy configuration using webUI, OTA updates, automation using timers or rules, expandability and entirely local control over MQTT, HTTP, Serial or KNX**.
