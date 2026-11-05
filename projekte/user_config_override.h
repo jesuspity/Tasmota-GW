@@ -74,6 +74,33 @@
 #undef MQTT_PASS
 #define MQTT_PASS "SUA_SENHA_MQTT"
 
+// ---------- VERSÃO PÚBLICA (GitHub / atualização OTA) ----------
+// O env tasmota32-projekte-gw-publico compila com -DPROJEKTE_PUBLIC_BUILD:
+// sem rede Wi-Fi e sem usuário/senha MQTT dentro do .bin, para poder ser publicado.
+// Na atualização pelo OtaUrl o gateway mantém a configuração já gravada (Wi-Fi, MQTT, Zigbee).
+#ifdef PROJEKTE_PUBLIC_BUILD
+  #undef STA_SSID1
+  #define STA_SSID1 ""
+  #undef STA_PASS1
+  #define STA_PASS1 ""
+  #undef STA_SSID2
+  #define STA_SSID2 ""
+  #undef STA_PASS2
+  #define STA_PASS2 ""
+  #undef MQTT_USER
+  #define MQTT_USER ""
+  #undef MQTT_PASS
+  #define MQTT_PASS ""
+#endif
+
+// ---------- ATUALIZAÇÃO OTA (item C1) ----------
+// Link fixo da última versão publicada no repositório público.
+// Antes apontava para o firmware de terceiros xsp1989 v14.5.0, que removia a correção Code 81.
+#ifdef OTA_URL
+  #undef OTA_URL
+#endif
+#define OTA_URL "https://github.com/jesuspity/Tasmota-GW/releases/latest/download/tasmota32-projekte-gw.bin"
+
 
 // ======================================================
 // 4) RECURSOS DO FIRMWARE
@@ -88,7 +115,7 @@
 #ifdef CODE_IMAGE_STR
   #undef CODE_IMAGE_STR
 #endif
-#define CODE_IMAGE_STR "Projekte+ GW v0.1"
+#define CODE_IMAGE_STR "Projekte+ GW v0.2"
 
 
 // ---------- IDIOMA CUSTOMIZADO ----------
@@ -433,6 +460,15 @@
 // Use somente os comandos separados por ponto e vírgula.
 // ======================================================
 
+// Wi-Fi e usuário/senha MQTT entram no backlog só na versão privada (vêm dos defines acima)
+#ifdef PROJEKTE_PUBLIC_BUILD
+  #define PP_BACKLOG_CREDENCIAIS ""
+#else
+  #define PP_BACKLOG_CREDENCIAIS \
+    "SSID1 " STA_SSID1 "; Password1 " STA_PASS1 "; SSID2 " STA_SSID2 "; Password2 " STA_PASS2 "; " \
+    "MqttUser " MQTT_USER "; MqttPassword " MQTT_PASS "; "
+#endif
+
 #undef USER_BACKLOG
 
 #define USER_BACKLOG \
@@ -474,14 +510,7 @@
   /* -------------------------------------------------- */ \
   /* WI-FI                                              */ \
   /* -------------------------------------------------- */ \
-  "SSID1 IoT; " \
-  /* SSID1 = rede Wi-Fi principal */ \
-  "Password1 SUA_SENHA_WIFI_1; " \
-  /* Password1 = senha da rede Wi-Fi principal */ \
-  "SSID2 projekte; " \
-  /* SSID2 = rede Wi-Fi secundária/fallback */ \
-  "Password2 SUA_SENHA_WIFI_2; " \
-  /* Password2 = senha da rede Wi-Fi secundária/fallback */ \
+  PP_BACKLOG_CREDENCIAIS \
   "Delay 2; " \
   \
   /* -------------------------------------------------- */ \
@@ -491,10 +520,6 @@
   /* MqttHost = endereço do broker MQTT */ \
   "MqttPort 8883; " \
   /* MqttPort 8883 = porta MQTT com TLS */ \
-  "MqttUser SEU_USUARIO_MQTT; " \
-  /* MqttUser = usuário de autenticação MQTT */ \
-  "MqttPassword SUA_SENHA_MQTT; " \
-  /* MqttPassword = senha de autenticação MQTT */ \
   "SetOption103 1; " \
   /* SetOption103 1 = ativa conexão MQTT com TLS */ \
   "SetOption132 0; " \

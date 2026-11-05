@@ -67,6 +67,9 @@ EZSP_Serial_t EZSP_Serial;
 #define ZIGBEE_RX_TASK_PERIOD_MS  5     // serial polling period, 256 bytes buffer holds ~22 ms at 115200 bps
 #endif
 const uint32_t ZIGBEE_RX_QUEUE_LEN = 64;      // frames waiting for the main loop
+const uint32_t ZIGBEE_RX_NRDY_HIGH = 48;      // queue level: ask the NCP to hold its frames (ASH nRdy flag)
+const uint32_t ZIGBEE_RX_NRDY_LOW = 16;       // queue level: tell the NCP we are ready again
+const uint32_t ZIGBEE_RX_MIN_HEAP = 8192;     // don't allocate a frame below this free heap (treated as queue full)
 const uint32_t ZIGBEE_RX_LATE_REPORT_MS = 1000; // log when the main loop picked a frame later than this
 
 typedef struct {
@@ -82,12 +85,17 @@ struct ZbRx_t {
   volatile uint32_t dropped = 0;       // frames lost because the queue was full (not acknowledged)
   volatile uint32_t bad_crc = 0;
   volatile uint32_t timeouts = 0;
+  volatile uint32_t out_of_seq = 0;    // DATA frames refused after a drop, until the NCP retransmits the missing one
+  volatile uint32_t nrdy_count = 0;    // times the NCP was asked to hold its frames
+  bool reject = false;                 // a DATA frame was dropped: accept only the expected frame number (RX task only)
+  bool nrdy = false;                   // last ACK sent with nRdy set (RX task only)
   uint32_t dropped_reported = 0;
+  uint32_t out_of_seq_reported = 0;
+  uint32_t nrdy_reported = 0;
   uint32_t bad_crc_reported = 0;
   uint32_t timeouts_reported = 0;
   uint32_t late_frames = 0;            // frames acknowledged by the task while the main loop was busy
   uint32_t late_max_ms = 0;
-  uint32_t late_since = 0;
 } ZbRx;
 
 bool zigbee_frame_preacked = false;    // the frame being processed was already acknowledged by the RX task
@@ -240,7 +248,6 @@ void ZigbeeInputLoop(void) {
       Z_LedStatusSet(true); // turn on receive LED<1>
       uint32_t waited = TimePassedSince(item.millis);
       if (waited > ZIGBEE_RX_LATE_REPORT_MS) {
-        if (0 == ZbRx.late_frames) { ZbRx.late_since = item.millis; }
         ZbRx.late_frames++;
         if (waited > ZbRx.late_max_ms) { ZbRx.late_max_ms = waited; }
       }
@@ -326,7 +333,7 @@ SBuffer * ZigbeeEZSPReadFrame(bool in_task) {
   }     // while (ZigbeeSerial->available())
 
   uint32_t frame_len = zigbee_buffer->len();
-  if (frame_complete || (frame_len && (millis() > (zigbee_polling_window + ZIGBEE_POLLING)))) {
+  if (frame_complete || (frame_len && (TimePassedSince(zigbee_polling_window) > ZIGBEE_POLLING))) {
     if ((frame_complete) && (frame_len >= 3)) {
       // frame received and has at least 3 bytes (without EOF), checking CRC
       uint16_t crc = 0xFFFF;                 // frame CRC
@@ -352,6 +359,15 @@ SBuffer * ZigbeeEZSPReadFrame(bool in_task) {
         AddLog(LOG_LEVEL_INFO, PSTR(D_JSON_ZIGBEE_EZSP_RECEIVED ": bad crc (received 0x%04X, computed 0x%04X) %_B"), crc_received, crc, zigbee_buffer);
       } else {
         // copy buffer without CRC
+#ifdef ZIGBEE_EZSP_RX_TASK
+        if (in_task && (heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) < ZIGBEE_RX_MIN_HEAP)) {
+          ZbRx.dropped++;                      // not enough memory, not acknowledged: the NCP will retransmit
+          if (0 == (zigbee_buffer->get8(0) & 0x80)) { ZbRx.reject = true; }
+          zigbee_buffer->setLen(0);
+          escape = false;
+          return nullptr;
+        }
+#endif // ZIGBEE_EZSP_RX_TASK
         ezsp_buffer = new SBuffer(frame_len - 2);
         ezsp_buffer->addBuffer(zigbee_buffer->getBuffer(), frame_len - 2);
 
@@ -389,15 +405,41 @@ void ZigbeeEZSPProcessFrame(SBuffer &ezsp_buffer) {
 
 #ifdef ZIGBEE_EZSP_RX_TASK
 // RX task context: acknowledge a received frame right away
+// ASH ACK byte: 1 0 0 0 nRdy ackNum(3)
+// nRdy asks the NCP to hold its DATA frames while the queue is almost full,
+// so the queue never overflows (the NCP resumes after an ACK without nRdy, or after ~1 s by itself)
+void ZigbeeRxTaskSendAck(void) {
+  uint32_t waiting = uxQueueMessagesWaiting(ZbRx.queue);
+  if (!ZbRx.nrdy && (waiting >= ZIGBEE_RX_NRDY_HIGH)) {
+    ZbRx.nrdy = true;
+    ZbRx.nrdy_count++;
+  } else if (ZbRx.nrdy && (waiting <= ZIGBEE_RX_NRDY_LOW)) {
+    ZbRx.nrdy = false;
+  }
+  uint8_t ack_byte = 0x80 | (ZbRx.nrdy ? 0x08 : 0x00) | (EZSP_Serial.from_ack & 0x07);
+  ZigbeeEZSPSendRaw(&ack_byte, 1, false);       // send a 1-byte ACK
+}
+
 void ZigbeeRxTaskAck(SBuffer &frame) {
   uint8_t control_byte = frame.get8(0);
   if (0 == (control_byte & 0x80)) {             // DATA frame
     EZSP_Serial.from_ack = ((control_byte >> 4) + 1) & 0x07;
-    uint8_t ack_byte = 0x80 | EZSP_Serial.from_ack;
-    ZigbeeEZSPSendRaw(&ack_byte, 1, false);     // send a 1-byte ACK
+    ZigbeeRxTaskSendAck();
   } else if (0xC1 == control_byte) {            // RSTACK, NCP restarted
     EZSP_Serial.from_ack = 0;
+    ZbRx.reject = false;
+    ZbRx.nrdy = false;
   }
+}
+
+// After a dropped DATA frame n, ASH acknowledgements are cumulative: acknowledging n+1 would tell the NCP
+// that n was received too, and it would never retransmit it. So until frame n arrives again,
+// later DATA frames are refused (not queued, not acknowledged) and the NCP retransmits from n.
+bool ZigbeeRxTaskAccept(SBuffer &frame) {
+  uint8_t control_byte = frame.get8(0);
+  if (!ZbRx.reject || (control_byte & 0x80)) { return true; }      // normal case, or not a DATA frame
+  uint8_t frm_num = (control_byte >> 4) & 0x07;
+  return (frm_num == (EZSP_Serial.from_ack & 0x07));
 }
 
 void ZigbeeRxTask(void *) {
@@ -408,13 +450,25 @@ void ZigbeeRxTask(void *) {
       if (!ZbRx.paused) {
         SBuffer *frame;
         while ((frame = ZigbeeEZSPReadFrame(true)) != nullptr) {
+          if (!ZigbeeRxTaskAccept(*frame)) {
+            delete frame;                       // out of sequence after a drop, the NCP will retransmit
+            ZbRx.out_of_seq++;
+            continue;
+          }
+          bool is_data = (0 == (frame->get8(0) & 0x80));
           ZbRxItem_t item = { frame, millis() };
           if (pdTRUE == xQueueSend(ZbRx.queue, &item, 0)) {
+            if (is_data) { ZbRx.reject = false; }  // the expected frame arrived, back to normal
             ZigbeeRxTaskAck(*frame);            // acknowledge only frames we can process later
           } else {
-            delete frame;                       // queue full, the NCP will retransmit
+            delete frame;                       // queue full, not acknowledged: the NCP will retransmit
             ZbRx.dropped++;
+            if (is_data) { ZbRx.reject = true; }
           }
+        }
+        // queue drained after a nRdy: tell the NCP it can send again
+        if (ZbRx.nrdy && (uxQueueMessagesWaiting(ZbRx.queue) <= ZIGBEE_RX_NRDY_LOW)) {
+          ZigbeeRxTaskSendAck();
         }
       }
       ZigbeeSerialUnlock();
@@ -449,11 +503,17 @@ void ZigbeeRxTaskReport(void) {
   uint32_t dropped = ZbRx.dropped;
   uint32_t bad_crc = ZbRx.bad_crc;
   uint32_t timeouts = ZbRx.timeouts;
-  if ((dropped != ZbRx.dropped_reported) || (bad_crc != ZbRx.bad_crc_reported) || (timeouts != ZbRx.timeouts_reported)) {
-    AddLog(LOG_LEVEL_INFO, PSTR(D_LOG_ZIGBEE "RX task: dropped %u, bad crc %u, time-out %u"), dropped, bad_crc, timeouts);
+  uint32_t out_of_seq = ZbRx.out_of_seq;
+  uint32_t nrdy = ZbRx.nrdy_count;
+  if ((dropped != ZbRx.dropped_reported) || (bad_crc != ZbRx.bad_crc_reported) || (timeouts != ZbRx.timeouts_reported) ||
+      (out_of_seq != ZbRx.out_of_seq_reported) || (nrdy != ZbRx.nrdy_reported)) {
+    AddLog(LOG_LEVEL_INFO, PSTR(D_LOG_ZIGBEE "RX task: dropped %u, bad crc %u, time-out %u, out of seq %u, nRdy %u, stack free %u"),
+                           dropped, bad_crc, timeouts, out_of_seq, nrdy, uxTaskGetStackHighWaterMark(ZbRx.task));
     ZbRx.dropped_reported = dropped;
     ZbRx.bad_crc_reported = bad_crc;
     ZbRx.timeouts_reported = timeouts;
+    ZbRx.out_of_seq_reported = out_of_seq;
+    ZbRx.nrdy_reported = nrdy;
   }
   // main loop is free again (queue empty): report how long frames waited
   if (ZbRx.late_frames && (0 == uxQueueMessagesWaiting(ZbRx.queue))) {
@@ -495,6 +555,7 @@ void ZigbeeInitSerial(void)
     if (!ZigbeeSerial->isValid()) {
       AddLog(LOG_LEVEL_INFO, PSTR(D_LOG_ZIGBEE "Invalid Serial GPIOs - aborting Zigbee"));
       delete ZigbeeSerial;
+      ZigbeeSerial = nullptr;
       return;
     }
     ZigbeeSerial->begin(115200);

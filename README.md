@@ -3,6 +3,17 @@
 Firmware dos gateways Zigbee **Projekte+** (ESP32 + coordenador EFR32/EZSP), derivado do [Tasmota oficial](https://github.com/arendst/Tasmota).
 Esta branch traz a correção do erro **`ZbState Code 81` (ASH "ACK timeout")**, que derrubava o Zigbee quando a internet caía com o Wi-Fi ainda conectado.
 
+## Firmware pronto (atualização OTA)
+
+A última versão pública fica sempre no mesmo endereço:
+
+```
+https://github.com/jesuspity/Tasmota-GW/releases/latest/download/tasmota32-projekte-gw.bin
+```
+
+No console do gateway: `OtaUrl <endereço acima>` e depois `Upgrade 1`. O gateway mantém o Wi-Fi, o MQTT e a rede Zigbee já gravados.
+Esse `.bin` público é compilado **sem senhas** (ambiente `tasmota32-projekte-gw-publico`); a partir da v0.2 ele já vem com esse `OtaUrl`.
+
 > O conteúdo original do README do Tasmota continua logo abaixo da seção Projekte+.
 
 ## Rastreabilidade
@@ -11,10 +22,10 @@ Esta branch traz a correção do erro **`ZbState Code 81` (ASH "ACK timeout")**,
 |---|---|
 | Código-base oficial | `arendst/Tasmota` commit [`1c2173927cdf1be61759bcc3b064b9511a18e5d7`](https://github.com/arendst/Tasmota/commit/1c2173927cdf1be61759bcc3b064b9511a18e5d7) — "Update RELEASENOTES.md", 16/10/2026 (versão 16.0.0 pré-lançamento) |
 | Branch desta correção | `projekte/zigbee-rx-task` |
-| Versão gerada | `16.0.0(Projekte+ GW v0.1)` |
-| Ambiente de compilação | `tasmota32-projekte-gw` ([projekte/platformio_override.ini](projekte/platformio_override.ini)), PlatformIO 6.2.0, Core 3.3.12 / IDF 5.5.5 |
+| Versão gerada | `16.0.0(Projekte+ GW v0.2)` (tag `projekte-gw-v0.2`) |
+| Ambiente de compilação | `tasmota32-projekte-gw` (privado, com senhas) e `tasmota32-projekte-gw-publico` (sem senhas) — [projekte/platformio_override.ini](projekte/platformio_override.ini), PlatformIO 6.2.0, Core 3.3.12 / IDF 5.5.5 |
 | Hardware validado | ESP32-D0WD-V3 (4 MB, layout safeboot) + EFR32 EZSP 6.7.10.0 protocolo 8 — gateway de teste `PXXX_GW02_TEST` |
-| Data da validação | 03/11/2026 — testes reais retirando o cabo do modem |
+| Data da validação | v0.1: 03/11/2026 (cabo do modem retirado); v0.2: 05/11/2026 (bateria automática de 2 h) |
 | Relatório completo | [projekte/docs/RELATORIO_CORRECAO_CODE81_2026-11-03.md](projekte/docs/RELATORIO_CORRECAO_CODE81_2026-11-03.md) |
 | Patch isolado | [projekte/docs/patch_zigbee_rx_task.diff](projekte/docs/patch_zigbee_rx_task.diff) (aplicável com `git apply` em outras versões) |
 | Explicação ilustrada (PDF) | [projekte/docs/Correcao_Zigbee_Code81_ProjektePlus.pdf](projekte/docs/Correcao_Zigbee_Code81_ProjektePlus.pdf) |
@@ -33,7 +44,7 @@ git diff 1c2173927cdf1be61759bcc3b064b9511a18e5d7 -- tasmota/
 | `tasmota/tasmota_xdrv_driver/xdrv_23_zigbee_9_serial.ino` | Leitura da serial Zigbee e envio de ACK **dentro do loop principal** | **Tarefa FreeRTOS `ZbRx`** lê a serial e envia o ACK; loop principal processa a fila (+237 / −25 linhas) |
 | `tasmota/tasmota_xdrv_driver/xdrv_23_zigbee_A_impl.ino` | — | Pausa a tarefa durante atualização do firmware da EFR32 (+3 linhas) |
 | `projekte/platformio_override.ini` (novo) | — | Ambiente enxuto `tasmota32-projekte-gw` (base Zigbee Bridge Pro, partição 2880k) |
-| `projekte/user_config_override.h` (novo) | — | Configuração Projekte+ **sem senhas** (marcadores `SUA_SENHA_*`) |
+| `projekte/user_config_override.h` (novo) | — | Configuração Projekte+ **sem senhas** (marcadores `SUA_SENHA_*`); `OTA_URL` próprio; chave `PROJEKTE_PUBLIC_BUILD` |
 | `projekte/tools/simulador_queda.py` (novo) | — | Gravador de log via rede local + simulador de queda de MQTT |
 
 Nenhum outro arquivo do Tasmota foi modificado.
@@ -89,23 +100,36 @@ if (xQueueReceive(ZbRx.queue, &item, 0) == pdTRUE) {
 | `ZIGBEE_EZSP_NO_RX_TASK` | não definido | Se definido, volta exatamente ao comportamento original |
 | `ZIGBEE_RX_TASK_PRIORITY` | `5` | Prioridade FreeRTOS da tarefa (loop principal = 1) |
 | `ZIGBEE_RX_TASK_PERIOD_MS` | `5` | Intervalo de leitura da serial (buffer de 256 bytes ≈ 22 ms a 115200 bps) |
+| `PROJEKTE_PUBLIC_BUILD` | não definido | Compila sem Wi-Fi e sem usuário/senha MQTT (versão publicável) |
+
+### Proteções da v0.2 na tarefa `ZbRx`
+
+| Item | Situação tratada | Como |
+|---|---|---|
+| Controle de fluxo | Fila quase cheia (loop travado com muito tráfego Zigbee) | ACK com o bit ASH **nRdy** a partir de 48 quadros na fila; liberado abaixo de 16 |
+| Sequência após descarte | Fila cheia descartava o quadro *n* e o ACK de *n+1* confirmava *n* sem ele ter sido processado | Depois de um descarte, só o quadro esperado é aceito; a EFR32 retransmite a partir dele |
+| Memória | Falta de memória ao copiar o quadro | Abaixo de 8 KB livres o quadro não é confirmado e a EFR32 retransmite |
+| Diagnóstico | — | Log `RX task: dropped, bad crc, time-out, out of seq, nRdy, stack free` |
+| Código original | `millis()` sem proteção na virada (~49 dias); ponteiro não zerado com GPIO inválido | `TimePassedSince()`; `ZigbeeSerial = nullptr` |
 
 ## Como compilar e gravar
 
 ```bash
 cp projekte/user_config_override.h tasmota/user_config_override.h   # e preencha as senhas
 cp projekte/platformio_override.ini .
-pio run -e tasmota32-projekte-gw     # gera build_output/firmware/tasmota32-projekte-gw.bin
+pio run -e tasmota32-projekte-gw            # privado, com senhas (gravação inicial)
+pio run -e tasmota32-projekte-gw-publico    # público, sem senhas (OTA / GitHub Release)
 ```
 Gravação no gateway (layout safeboot): console `Restart 3` → página **Atualizar Firmware** → enviar o `.bin`. Detalhes no relatório.
 
-> **Segurança:** o binário compilado contém as senhas definidas no `user_config_override.h`. Não publique o `.bin`.
+> **Segurança:** o binário do ambiente privado contém as senhas definidas no `user_config_override.h`. Publique só o `.bin` do ambiente `-publico`.
 
 ## Histórico Projekte+
 
 | Data | Versão | Alteração |
 |---|---|---|
 | 03/11/2026 | 16.0.0 Projekte+ GW v0.1 | Tarefa `ZbRx` (ACK imediato da serial EZSP); ambiente enxuto `tasmota32-projekte-gw`; ferramenta de log/simulação; relatório e PDF |
+| 05/11/2026 | 16.0.0 Projekte+ GW v0.2 | `OTA_URL` próprio (GitHub Release); versão pública sem senhas; controle de fluxo nRdy, sequência após descarte e checagem de memória na `ZbRx`; correções `millis()` e ponteiro do original |
 
 ---
 
