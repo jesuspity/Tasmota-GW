@@ -49,7 +49,7 @@
 ### 3.2 `tasmota/tasmota_xdrv_driver/xdrv_23_zigbee_A_impl.ino`
 - A tarefa pausa enquanto o firmware da própria EFR32 está sendo atualizado (o atualizador XMODEM lê a serial diretamente).
 
-### 3.3 `Config GW/user_config_override.h`
+### 3.3 `GW/Configuracao/user_config_override.h`
 - Nova seção "ZIGBEE - TAREFA DE RECEPÇÃO PRIORITÁRIA", com `ZIGBEE_RX_TASK_PRIORITY 5`, `ZIGBEE_RX_TASK_PERIOD_MS 5` e a opção `ZIGBEE_EZSP_NO_RX_TASK` comentada. O restante do arquivo não mudou.
 
 ### 3.4 `Tasmota GW/platformio_override.ini` (novo)
@@ -61,7 +61,7 @@ O diff completo está em `projekte/docs/patch_zigbee_rx_task.diff`.
 
 ## 4. Testes
 
-Logs completos na pasta `Testes/`, gravados pelo Mac via rede local (funcionam sem internet).
+Logs completos na pasta `GW/Testes/`, gravados pelo Mac via rede local (funcionam sem internet).
 
 ### 4.1 Firmware antigo 14.5.0 — `log_teste2_cabo_firmware_atual.txt`
 ```
@@ -91,8 +91,8 @@ Logs completos na pasta `Testes/`, gravados pelo Mac via rede local (funcionam s
 
 **Compilar** (cópia local, fora do Google Drive, para não sincronizar GBs):
 ```bash
-rsync -a --delete --exclude .git --exclude .pio "<Drive>/Firmware Tasmota/Tasmota GW/" ~/ProjekteBuild/TasmotaGW/
-cp "<Drive>/Firmware Tasmota/Config GW/user_config_override.h" ~/ProjekteBuild/TasmotaGW/tasmota/
+rsync -a --delete --exclude .git --exclude .pio "<Drive>/Firmware Tasmota/GW/Codigo-fonte/" ~/ProjekteBuild/TasmotaGW/
+cp "<Drive>/Firmware Tasmota/GW/Configuracao/user_config_override.h" ~/ProjekteBuild/TasmotaGW/tasmota/
 cd ~/ProjekteBuild/TasmotaGW && ~/.platformio/penv/bin/pio run -e tasmota32-projekte-gw
 # resultado: build_output/firmware/tasmota32-projekte-gw.bin
 ```
@@ -105,7 +105,7 @@ cd ~/ProjekteBuild/TasmotaGW && ~/.platformio/penv/bin/pio run -e tasmota32-proj
 
 Pela linha de comando, é obrigatório abrir a página `/up` antes de enviar para `/u2`. Sem isso, o Tasmota responde "Not enough space".
 
-Binário gravado: `Firmware Gerado/GW/v0.1-privado/tasmota32-ProjektePlus-GW-ZbRxTask-16.0.0-enxuto.bin`
+Binário gravado: `GW/Firmware/v0.1-privado/tasmota32-ProjektePlus-GW-ZbRxTask-16.0.0-enxuto.bin`
 SHA-256 `edd6b48ef268f232ed18b5fa6a74d90ec6a342fc6176d1ac4aad1f04b5af441e`
 
 ---
@@ -138,4 +138,4 @@ SHA-256 `edd6b48ef268f232ed18b5fa6a74d90ec6a342fc6176d1ac4aad1f04b5af441e`
 5. **Temperatura:** o ESP32 mostrava 90 °C. O firmware novo roda a 160 MHz (antes 240 MHz), o que ajuda. Mesmo assim, vale verificar a ventilação da caixa.
 6. **Sensores TH03 e TH04:** sem comunicação há ~13 dias. Verificar bateria e alcance.
 7. **Página web travada durante a queda:** é esperado, porque o MQTT continua travando o loop principal. Só o Zigbee foi protegido. Os dados recebidos nesse tempo são processados quando o loop volta.
-8. **Gravador de log** ainda rodando no Mac (`Testes/log_teste3_cabo_firmware_novo.txt`). Para parar: `pkill -f simulador_queda.py`.
+8. **Gravador de log** ainda rodando no Mac (`GW/Testes/log_teste3_cabo_firmware_novo.txt`). Para parar: `pkill -f simulador_queda.py`.
