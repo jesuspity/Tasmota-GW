@@ -14,6 +14,8 @@ https://raw.githubusercontent.com/jesuspity/Firmware-ProjektePlus-/main/GW/tasmo
 No console do gateway: `OtaUrl <endereço acima>` e depois `Upgrade 1`. O gateway mantém o Wi-Fi, o MQTT e a rede Zigbee já gravados.
 Esse `.bin` público é compilado **sem senhas** (ambiente `tasmota32-projekte-gw-publico`). A partir da v0.2.1 ele já vem com esse `OtaUrl`, que aponta para a pasta `GW/` do repositório público [Firmware-ProjektePlus-](https://github.com/jesuspity/Firmware-ProjektePlus-). A v0.2 apontava para a release `projekte-gw-v0.2` deste repositório, que continua disponível.
 
+Padrões de fábrica (valem para dispositivo novo ou após reset; um dispositivo já configurado mantém os seus): `STORE_ID` = `LojaXXX`, `DEVICE_ID` = `XXXX_GWXX_XXXX` (Topic, DeviceName e FriendlyName) e `EMPRESA_ID` = `Disp_Sem_Config` (FullTopic e GroupTopic2). Estão em `projekte/user_config_override.h`.
+
 > O conteúdo original do README do Tasmota continua logo abaixo da seção Projekte+.
 
 ## Rastreabilidade
@@ -131,6 +133,7 @@ Gravação no gateway (layout safeboot): console `Restart 3` → página **Atual
 | 03/11/2026 | 16.0.0 Projekte+ GW v0.1 | Tarefa `ZbRx` (ACK imediato da serial EZSP); ambiente enxuto `tasmota32-projekte-gw`; ferramenta de log/simulação; relatório e PDF |
 | 05/11/2026 | 16.0.0 Projekte+ GW v0.2 | `OTA_URL` próprio (GitHub Release); versão pública sem senhas; controle de fluxo nRdy, sequência após descarte e checagem de memória na `ZbRx`; correções `millis()` e ponteiro do original |
 | 12/11/2026 | 16.0.0 Projekte+ GW v0.2.1 | Link OTA fixo no repositório público `Firmware-ProjektePlus-` (pasta `GW/`); código igual à v0.2, muda só o `OTA_URL` e a versão |
+| 13/11/2026 | 16.0.0 Projekte+ GW v0.2.1 | Padrões de fábrica `STORE_ID`, `DEVICE_ID` e `EMPRESA_ID` na FullTopic e no GroupTopic2; mesma versão, binário recompilado |
 
 ---
 

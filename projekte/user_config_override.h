@@ -27,9 +27,10 @@
 // 1) IDENTIFICAÇÃO DO DISPOSITIVO
 // ======================================================
 
-#define STORE_ID  "Loja267"             // Loja/unidade usada no FullTopic MQTT
+#define STORE_ID  "LojaXXX"             // Loja/unidade usada no FullTopic MQTT
 
-#define DEVICE_ID "I267_GW01_FARM"      // Topic, DeviceName e FriendlyName I007-GW01-FARM
+#define DEVICE_ID "XXXX_GWXX_XXXX"      // Topic, DeviceName e FriendlyName I007-GW01-FARM
+#define EMPRESA_ID "Disp_Sem_Config"        // Empresa padrão: FullTopic e GroupTopic2
 #define UNIQUE_ID DEVICE_ID "_%06X"     // MqttClient único usando final do MAC
 
 
@@ -531,8 +532,8 @@
   /* -------------------------------------------------- */ \
   "Topic " DEVICE_ID "; " \
   /* Topic = tópico MQTT principal do gateway */ \
-  "FullTopic Indiana/" STORE_ID "/%topic%/%prefix%/; " \
-  /* FullTopic = padrão MQTT: Indiana/LojaXXX/DEVICE/cmnd|stat|tele/ */ \
+  "FullTopic " EMPRESA_ID "/" STORE_ID "/%topic%/%prefix%/; " \
+  /* FullTopic = padrão MQTT: EMPRESA_ID/STORE_ID/DEVICE_ID/cmnd|stat|tele/ */ \
   "DeviceName " DEVICE_ID "; " \
   /* DeviceName = nome exibido na interface web do Tasmota */ \
   "FriendlyName1 " DEVICE_ID "; " \
@@ -575,8 +576,8 @@
   /* -------------------------------------------------- */ \
   "GroupTopic1 tasmotas; " \
   /* GroupTopic1 = grupo geral padrão dos dispositivos Tasmota */ \
-  "GroupTopic2 Indiana; " \
-  /* GroupTopic2 = grupo geral de todos os dispositivos Indiana */ \
+  "GroupTopic2 " EMPRESA_ID "; " \
+  /* GroupTopic2 = grupo geral de todos os dispositivos EMPRESA_ID */ \
   "GroupTopic3 " STORE_ID "; " \
   /* GroupTopic3 = grupo de todos os dispositivos da loja atual */ \
   "GroupTopic4 GW; " \
