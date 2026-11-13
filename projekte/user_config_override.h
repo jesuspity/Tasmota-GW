@@ -99,7 +99,7 @@
 #ifdef OTA_URL
   #undef OTA_URL
 #endif
-#define OTA_URL "https://github.com/jesuspity/Tasmota-GW/releases/latest/download/tasmota32-projekte-gw.bin"
+#define OTA_URL "https://raw.githubusercontent.com/jesuspity/Firmware-ProjektePlus-/main/GW/tasmota32-projekte-gw.bin"
 
 
 // ======================================================
@@ -115,7 +115,7 @@
 #ifdef CODE_IMAGE_STR
   #undef CODE_IMAGE_STR
 #endif
-#define CODE_IMAGE_STR "Projekte+ GW v0.2"
+#define CODE_IMAGE_STR "Projekte+ GW v0.2.1"
 
 
 // ---------- IDIOMA CUSTOMIZADO ----------

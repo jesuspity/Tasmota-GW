@@ -8,11 +8,11 @@ Esta branch traz a correção do erro **`ZbState Code 81` (ASH "ACK timeout")**,
 A última versão pública fica sempre no mesmo endereço:
 
 ```
-https://github.com/jesuspity/Tasmota-GW/releases/latest/download/tasmota32-projekte-gw.bin
+https://raw.githubusercontent.com/jesuspity/Firmware-ProjektePlus-/main/GW/tasmota32-projekte-gw.bin
 ```
 
 No console do gateway: `OtaUrl <endereço acima>` e depois `Upgrade 1`. O gateway mantém o Wi-Fi, o MQTT e a rede Zigbee já gravados.
-Esse `.bin` público é compilado **sem senhas** (ambiente `tasmota32-projekte-gw-publico`); a partir da v0.2 ele já vem com esse `OtaUrl`.
+Esse `.bin` público é compilado **sem senhas** (ambiente `tasmota32-projekte-gw-publico`). A partir da v0.2.1 ele já vem com esse `OtaUrl`, que aponta para a pasta `GW/` do repositório público [Firmware-ProjektePlus-](https://github.com/jesuspity/Firmware-ProjektePlus-). A v0.2 apontava para a release `projekte-gw-v0.2` deste repositório, que continua disponível.
 
 > O conteúdo original do README do Tasmota continua logo abaixo da seção Projekte+.
 
@@ -22,7 +22,7 @@ Esse `.bin` público é compilado **sem senhas** (ambiente `tasmota32-projekte-g
 |---|---|
 | Código-base oficial | `arendst/Tasmota` commit [`1c2173927cdf1be61759bcc3b064b9511a18e5d7`](https://github.com/arendst/Tasmota/commit/1c2173927cdf1be61759bcc3b064b9511a18e5d7) — "Update RELEASENOTES.md", 16/10/2026 (versão 16.0.0 pré-lançamento) |
 | Branch desta correção | `projekte/zigbee-rx-task` |
-| Versão gerada | `16.0.0(Projekte+ GW v0.2)` (tag `projekte-gw-v0.2`) |
+| Versão gerada | `16.0.0(Projekte+ GW v0.2.1)` (tag `projekte-gw-v0.2.1`) |
 | Ambiente de compilação | `tasmota32-projekte-gw` (privado, com senhas) e `tasmota32-projekte-gw-publico` (sem senhas) — [projekte/platformio_override.ini](projekte/platformio_override.ini), PlatformIO 6.2.0, Core 3.3.12 / IDF 5.5.5 |
 | Hardware validado | ESP32-D0WD-V3 (4 MB, layout safeboot) + EFR32 EZSP 6.7.10.0 protocolo 8 — gateway de teste `PXXX_GW02_TEST` |
 | Data da validação | v0.1: 03/11/2026 (cabo do modem retirado); v0.2: 05/11/2026 (bateria automática de 2 h) |
@@ -130,6 +130,7 @@ Gravação no gateway (layout safeboot): console `Restart 3` → página **Atual
 |---|---|---|
 | 03/11/2026 | 16.0.0 Projekte+ GW v0.1 | Tarefa `ZbRx` (ACK imediato da serial EZSP); ambiente enxuto `tasmota32-projekte-gw`; ferramenta de log/simulação; relatório e PDF |
 | 05/11/2026 | 16.0.0 Projekte+ GW v0.2 | `OTA_URL` próprio (GitHub Release); versão pública sem senhas; controle de fluxo nRdy, sequência após descarte e checagem de memória na `ZbRx`; correções `millis()` e ponteiro do original |
+| 12/11/2026 | 16.0.0 Projekte+ GW v0.2.1 | Link OTA fixo no repositório público `Firmware-ProjektePlus-` (pasta `GW/`); código igual à v0.2, muda só o `OTA_URL` e a versão |
 
 ---
 
