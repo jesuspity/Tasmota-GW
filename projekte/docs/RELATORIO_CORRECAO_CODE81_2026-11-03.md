@@ -105,7 +105,7 @@ cd ~/ProjekteBuild/TasmotaGW && ~/.platformio/penv/bin/pio run -e tasmota32-proj
 
 Pela linha de comando, é obrigatório abrir a página `/up` antes de enviar para `/u2`. Sem isso, o Tasmota responde "Not enough space".
 
-Binário gravado: `Firmware Gerado/tasmota32-ProjektePlus-GW-ZbRxTask-16.0.0-enxuto.bin`
+Binário gravado: `Firmware Gerado/GW/v0.1-privado/tasmota32-ProjektePlus-GW-ZbRxTask-16.0.0-enxuto.bin`
 SHA-256 `edd6b48ef268f232ed18b5fa6a74d90ec6a342fc6176d1ac4aad1f04b5af441e`
 
 ---
